@@ -1,4 +1,6 @@
-fastapi
-uvicorn
-celery
-redis
+fastapi==0.115.8
+uvicorn[standard]==0.34.0
+celery==5.4.0
+kombu==5.3.7
+redis==5.2.1
+packaging==24.2
