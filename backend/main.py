@@ -36,5 +36,5 @@ async def get_task_status(task_id: str):
 @app.get("/health")
 @app.post("/health/")
 async def health():
-    """Liveness check for Docker and the load balancer. POST kept from the original app."""
+    """Liveness check for Docker and the load balancer."""
     return {"message": "OK"}

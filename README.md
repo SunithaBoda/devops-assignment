@@ -117,9 +117,4 @@ On every push and pull request, `.github/workflows/ci.yml`:
 - `terraform fmt -check` and `terraform validate`
 - `docker compose up --wait` and a health check
 
-## Submission
-
-1. Push this repository to **your** GitHub account (do not push to the assignment source repo).
-2. Add GitHub Actions secrets if you want the AWS deploy to run.
-3. Record a short video walkthrough of local Compose and the GitHub Actions deploy workflow.
-4. Email **advaid@superclaims.ai** with subject `DevOps Assessment Assignment`, the repo URL, and the walkthrough video.
+Cloud deploy (`.github/workflows/deploy.yml`) runs on push to `main` when `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set as repository secrets. Without those secrets the job is skipped.

@@ -18,8 +18,27 @@ env:
   TF_IN_AUTOMATION: "true"
 
 jobs:
+  check-aws:
+    name: Check AWS credentials
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - id: check
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -n "${AWS_ACCESS_KEY_ID}" ]; then
+            echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "present=false" >> "${GITHUB_OUTPUT}"
+            echo "AWS secrets are not configured. Skipping deploy."
+          fi
+
   deploy:
     name: Build, push, and deploy
+    needs: check-aws
+    if: needs.check-aws.outputs.present == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

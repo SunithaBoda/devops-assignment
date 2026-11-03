@@ -9,7 +9,7 @@ These steps run the full stack on a developer laptop: FastAPI, Celery worker, Re
 ## 1. Clone and configure
 
 ```bash
-git clone <your-fork-url>
+git clone https://github.com/SunithaBoda/devops-assignment.git
 cd devops-assignment
 cp .env.example .env
 ```
