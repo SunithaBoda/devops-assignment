@@ -1,0 +1,4 @@
+bucket         = "devops-assignment-tfstate-ACCOUNT_ID"
+region         = "us-east-1"
+dynamodb_table = "devops-assignment-tf-lock"
+encrypt        = true

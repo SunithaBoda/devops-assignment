@@ -1,0 +1,107 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  deploy:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Ensure Terraform remote state
+        id: backend
+        run: |
+          chmod +x scripts/ensure-tf-backend.sh
+          while IFS= read -r line; do
+            echo "${line}" >> "${GITHUB_OUTPUT}"
+          done < <(./scripts/ensure-tf-backend.sh)
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ steps.backend.outputs.bucket }}" \
+            -backend-config="region=${{ steps.backend.outputs.region }}" \
+            -backend-config="dynamodb_table=${{ steps.backend.outputs.dynamodb_table }}" \
+            -backend-config="encrypt=true"
+
+      - name: Create ECR repositories
+        working-directory: infra/terraform
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=aws_ecr_repository.backend \
+            -target=aws_ecr_repository.frontend
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Read ECR URLs
+        id: images
+        working-directory: infra/terraform
+        run: |
+          echo "backend=$(terraform output -raw ecr_backend_url)" >> "${GITHUB_OUTPUT}"
+          echo "frontend=$(terraform output -raw ecr_frontend_url)" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push images
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "${{ steps.images.outputs.backend }}:${IMAGE_TAG}" \
+            -t "${{ steps.images.outputs.backend }}:latest" .
+          docker build -t "${{ steps.images.outputs.frontend }}:${IMAGE_TAG}" \
+            -t "${{ steps.images.outputs.frontend }}:latest" \
+            --build-arg NGINX_CONF=nginx.cloud.conf ./frontend
+          docker push "${{ steps.images.outputs.backend }}:${IMAGE_TAG}"
+          docker push "${{ steps.images.outputs.backend }}:latest"
+          docker push "${{ steps.images.outputs.frontend }}:${IMAGE_TAG}"
+          docker push "${{ steps.images.outputs.frontend }}:latest"
+
+      - name: Terraform apply
+        working-directory: infra/terraform
+        env:
+          TF_VAR_image_tag: ${{ github.sha }}
+        run: terraform apply -input=false -auto-approve
+
+      - name: Wait for ECS services
+        working-directory: infra/terraform
+        run: |
+          CLUSTER="$(terraform output -raw ecs_cluster_name)"
+          for SERVICE in \
+            "$(terraform output -raw backend_service_name)" \
+            "$(terraform output -raw frontend_service_name)" \
+            "$(terraform output -raw worker_service_name)"
+          do
+            echo "Waiting for ${SERVICE}"
+            aws ecs wait services-stable --cluster "${CLUSTER}" --services "${SERVICE}"
+          done
+
+      - name: Print application URL
+        working-directory: infra/terraform
+        run: |
+          echo "Application URL: $(terraform output -raw application_url)"
